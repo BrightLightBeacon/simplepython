@@ -1,8 +1,7 @@
 @echo off
-chcp 65001 > nul
 cd /d "%~dp0"
 
-echo Перевірка оновлень...
+echo Checking for updates...
 
 where python >nul 2>nul
 if %errorlevel% equ 0 goto RUN_SCRIPT
@@ -13,16 +12,12 @@ pause
 exit /b 1
 
 :RUN_SCRIPT
-python пайтон\оновити.py
+python -c "import os, sys, subprocess; d=bytes([208,191,208,176,208,185,209,130,208,190,208,189]).decode('utf-8'); f=bytes([208,190,208,189,208,190,208,178,208,184,209,130,208,184,46,112,121]).decode('utf-8'); subprocess.run([sys.executable, os.path.join(d, f)])"
 if %errorlevel% neq 0 goto ERROR_OCCURRED
-
-echo.
-echo Натисніть будь-яку клавішу для виходу.
-pause > nul
 exit /b 0
 
 :ERROR_OCCURRED
 echo.
-echo [ERROR] Script execution failed.
+echo [ERROR] Update failed.
 pause
 exit /b 1

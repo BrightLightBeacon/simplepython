@@ -268,4 +268,7 @@ if __name__ == "__main__":
         print("\n[OK] Update completed successfully!")
     else:
         print("\n[FAILED] Could not update files.")
+        
+    input("\nНатисніть Enter для виходу / Press Enter to exit...")
+    if not success:
         sys.exit(1)
