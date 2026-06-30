@@ -1,10 +1,9 @@
 @echo off
-chcp 65001 > nul
 cd /d "%~dp0"
 
-echo Запуск створення табелів...
+echo Running timesheet generator...
 
-python пайтон\табель.py %*
+python -c "import os, sys, subprocess; d=bytes([208,191,208,176,208,185,209,130,208,190,208,189]).decode('utf-8'); f=bytes([209,130,208,176,208,177,208,181,208,187,209,140,46,112,121]).decode('utf-8'); subprocess.run([sys.executable, os.path.join(d, f)] + sys.argv[1:])" %*
 if %errorlevel% equ 0 exit /b 0
 
 echo.
