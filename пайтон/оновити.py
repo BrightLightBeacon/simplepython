@@ -349,10 +349,10 @@ def run_zip_update(root_dir):
             os.makedirs(os.path.dirname(dest_file), exist_ok=True)
             if dest_file.lower().endswith('.bat'):
                 try:
-                    with open(src_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(src_file, 'rb') as f:
                         content = f.read()
-                    normalized = content.replace('\r\n', '\n').replace('\n', '\r\n')
-                    with open(dest_file, 'w', encoding='utf-8') as f:
+                    normalized = content.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                    with open(dest_file, 'wb') as f:
                         f.write(normalized)
                     shutil.copystat(src_file, dest_file)
                 except Exception as copy_err:
