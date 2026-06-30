@@ -54,11 +54,11 @@ def run_git_update(root_dir):
             print("Not a git repository.")
             return False
             
-        print("Git repository detected. Fetching latest changes...")
+        print("Git repository detected. Fetching changes...")
         # Fetch remote changes
         fetch_result = subprocess.run(["git", "fetch", "origin", "main"], cwd=root_dir)
         if fetch_result.returncode != 0:
-            print("Git fetch failed. Will try ZIP download fallback.")
+            print("Git fetch failed. Trying ZIP fallback...")
             return False
             
         # Parse diff between HEAD and origin/main to show detailed logs
@@ -92,22 +92,21 @@ def run_git_update(root_dir):
                     to_skip.append(file_path)
                     
         if not has_changes and not to_skip:
-            print("Already up to date. No changes detected.")
+            print("No updates available.")
             return True
             
-        print("\nChange Summary:")
+        print("\nChanges to apply:")
         for path, action in to_update:
             print(f"  [{action}] {path}")
         for path in to_delete:
             print(f"  [DELETED] {path}")
         for path in to_skip:
-            print(f"  [SKIPPED] {path} (Safely preserved local copy)")
+            print(f"  [SKIPPED] {path} (Preserving local copy)")
             
         if not to_update and not to_delete:
             print("\nNo allowed files need updating.")
             return True
             
-        # Apply the updates
         print("\nApplying updates...")
         if to_update:
             files_to_checkout = [path for path, _ in to_update]
@@ -122,21 +121,20 @@ def run_git_update(root_dir):
                     pass
                     
         # Reset staging area to keep git status clean
-        print("Resetting git staging area...")
         subprocess.run(["git", "reset", "HEAD"], cwd=root_dir)
         
-        print("\nSuccessfully updated using Git!")
+        print("\nUpdate completed successfully (Git).")
         return True
     except FileNotFoundError:
         print("Git is not installed or not found in PATH.")
         return False
     except Exception as e:
-        print(f"Git update failed due to: {e}")
+        print(f"Git update failed: {e}")
         return False
 
 def run_zip_update(root_dir):
     """Download ZIP from GitHub and extract it, backing up replaced files."""
-    print("\nUpdating via ZIP archive download...")
+    print("\nTrying update via ZIP archive download...")
     temp_zip = None
     temp_dir = None
     
@@ -276,27 +274,27 @@ def run_zip_update(root_dir):
                 to_delete.append(local_file)
                 
         if not to_update and not to_delete and not to_skip:
-            print("Already up to date. No changes detected.")
+            print("No updates available.")
             return True
             
-        print("\nChange Summary:")
+        print("\nChanges to apply:")
         for path, _, _, action in to_update:
             print(f"  [{action}] {path}")
         for path in to_delete:
             print(f"  [DELETED] {path}")
         for path in to_skip:
-            print(f"  [SKIPPED] {path} (Safely preserved local copy)")
+            print(f"  [SKIPPED] {path} (Preserving local copy)")
             
         if not to_update and not to_delete:
             print("\nNo allowed files need updating.")
             return True
             
         # Create backups of files we are about to overwrite/delete
-        backup_dirname = f"оновити_резервна_копія_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        backup_dirname = f"update_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         backup_dir = os.path.join(root_dir, backup_dirname)
         has_backups = False
         
-        print("\nPreparing backup for modified files...")
+        print("\nBacking up modified files...")
         for path, _, dest_file, action in to_update:
             if action == "UPDATED" and os.path.exists(dest_file):
                 if not has_backups:
@@ -317,7 +315,7 @@ def run_zip_update(root_dir):
                 shutil.copy2(dest_file, backup_dest)
                 
         if has_backups:
-            print(f"Created backup of modified files in: {backup_dirname}")
+            print(f"Backup created in: {backup_dirname}")
             
         # Apply updates
         print("Applying updates...")
@@ -326,7 +324,7 @@ def run_zip_update(root_dir):
                 try:
                     shutil.copy2(src_file, dest_file)
                 except Exception:
-                    print("  [INFO] пайтон/оновити.py is in use. It will be updated on the next run.")
+                    print("  [INFO] пайтон/оновити.py is in use. It will be updated on next execution.")
                 continue
             os.makedirs(os.path.dirname(dest_file), exist_ok=True)
             shutil.copy2(src_file, dest_file)
@@ -339,7 +337,7 @@ def run_zip_update(root_dir):
                 except Exception:
                     pass
                     
-        print("\nSuccessfully updated via ZIP download!")
+        print("\nUpdate completed successfully (ZIP).")
         return True
         
     except Exception as e:
@@ -372,17 +370,12 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(script_dir)
     
-    print("=== ОНОВЛЕННЯ ПРОГРАМИ / UPDATE ===")
-    print(f"Project directory: {root_dir}\n")
-    
     success = run_git_update(root_dir)
     if not success:
         success = run_zip_update(root_dir)
         
-    if success:
-        print("\n[OK] Update completed successfully!")
-    else:
-        print("\n[FAILED] Could not update files.")
+    if not success:
+        print("\n[ERROR] Update failed.")
         
     input("\nНатисніть Enter для виходу / Press Enter to exit...")
     if not success:
