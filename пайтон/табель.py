@@ -259,6 +259,45 @@ def main():
     
     args = parser.parse_args()
     
+    # Interactive prompt for month and company if not specified
+    if not args.month:
+        try:
+            today = datetime.date.today()
+            first_day_of_this_month = today.replace(day=1)
+            prev_month_date = first_day_of_this_month - datetime.timedelta(days=1)
+            default_month_str = f"{prev_month_date.month:02d}{str(prev_month_date.year)[2:]}"
+            
+            user_input = input(f"Введіть місяць для обробки у форматі ММРР [за замовчуванням: {default_month_str}]: ").strip()
+            if user_input:
+                args.month = user_input
+            else:
+                args.month = default_month_str
+                
+            # Ask for company filter
+            if not args.company:
+                print("\nОберіть компанію для фільтрації:")
+                print("1. ЗЕТТРА (zet)")
+                print("2. ЗІАВТОТРАНС (zia)")
+                print("Enter. Всі компанії (без фільтрації)")
+                comp_input = input("Ваш вибір: ").strip()
+                if comp_input == '1' or comp_input.lower() == 'zet':
+                    args.company = "zet"
+                elif comp_input == '2' or comp_input.lower() == 'zia':
+                    args.company = "zia"
+        except (KeyboardInterrupt, EOFError):
+            print("\nСкасовано.")
+            return
+
+    if args.month:
+        if not re.match(r'^\d{4}$', args.month):
+            print(f"Помилка: Неправильний формат місяця '{args.month}'. Використовуйте формат ММРР (наприклад, 0526)")
+            return
+        m_val = int(args.month[:2])
+        if m_val < 1 or m_val > 12:
+            print(f"Помилка: Неіснуючий місяць '{m_val}'. Значення має бути від 01 до 12.")
+            return
+
+    
     # Load and parse vacations from відпустки.txt inside ROOT_DIR
     vacations_path = os.path.join(ROOT_DIR, "відпустки.txt")
     if not os.path.exists(vacations_path):
