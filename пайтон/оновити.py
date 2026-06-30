@@ -56,7 +56,10 @@ def run_git_update(root_dir):
             
         print("Git repository detected. Fetching changes...")
         # Fetch remote changes
-        fetch_result = subprocess.run(["git", "fetch", "origin", "main"], cwd=root_dir)
+        fetch_result = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=root_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         if fetch_result.returncode != 0:
             print("Git fetch failed. Trying ZIP fallback...")
             return False
@@ -110,7 +113,10 @@ def run_git_update(root_dir):
         print("\nApplying updates...")
         if to_update:
             files_to_checkout = [path for path, _ in to_update]
-            subprocess.run(["git", "checkout", "origin/main", "--"] + files_to_checkout, cwd=root_dir)
+            subprocess.run(
+                ["git", "checkout", "origin/main", "--"] + files_to_checkout,
+                cwd=root_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             
         for path in to_delete:
             full_path = os.path.join(root_dir, path)
@@ -121,7 +127,10 @@ def run_git_update(root_dir):
                     pass
                     
         # Reset staging area to keep git status clean
-        subprocess.run(["git", "reset", "HEAD"], cwd=root_dir)
+        subprocess.run(
+            ["git", "reset", "HEAD"],
+            cwd=root_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         
         print("\nUpdate completed successfully (Git).")
         return True
@@ -163,10 +172,10 @@ def run_zip_update(root_dir):
         # 1. Download the ZIP file
         try:
             if token:
-                print("Using saved GitHub token...")
+                print("Using saved token...")
                 temp_zip = download_zip(API_ZIP_URL, token)
             else:
-                print(f"Downloading update from {ZIP_URL}...")
+                print("Downloading update...")
                 temp_zip = download_zip(ZIP_URL)
         except urllib.error.HTTPError as e:
             # 404, 403, or 401 indicates that authentication is required
@@ -175,8 +184,8 @@ def run_zip_update(root_dir):
                 if token:
                     print("Saved token appears to be invalid or expired.")
                 
-                # Prompt user for GitHub Personal Access Token (PAT)
-                token = input("Please enter your GitHub Personal Access Token (PAT): ").strip()
+                # Prompt user for Personal Access Token (PAT)
+                token = input("Please enter your Personal Access Token (PAT): ").strip()
                 if not token:
                     raise Exception("Authentication token is required to download updates.")
                 
@@ -290,8 +299,9 @@ def run_zip_update(root_dir):
             return True
             
         # Create backups of files we are about to overwrite/delete
+        backup_parent_dir = os.path.join(root_dir, "backups")
         backup_dirname = f"update_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        backup_dir = os.path.join(root_dir, backup_dirname)
+        backup_dir = os.path.join(backup_parent_dir, backup_dirname)
         has_backups = False
         
         print("\nBacking up modified files...")
@@ -315,7 +325,7 @@ def run_zip_update(root_dir):
                 shutil.copy2(dest_file, backup_dest)
                 
         if has_backups:
-            print(f"Backup created in: {backup_dirname}")
+            print(f"Backup created in: {os.path.join('backups', backup_dirname)}")
             
         # Apply updates
         print("Applying updates...")
@@ -327,7 +337,19 @@ def run_zip_update(root_dir):
                     print("  [INFO] пайтон/оновити.py is in use. It will be updated on next execution.")
                 continue
             os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-            shutil.copy2(src_file, dest_file)
+            if dest_file.lower().endswith('.bat'):
+                try:
+                    with open(src_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    normalized = content.replace('\r\n', '\n').replace('\n', '\r\n')
+                    with open(dest_file, 'w', encoding='utf-8') as f:
+                        f.write(normalized)
+                    shutil.copystat(src_file, dest_file)
+                except Exception as copy_err:
+                    print(f"  [WARNING] Could not normalize line endings for {path}: {copy_err}")
+                    shutil.copy2(src_file, dest_file)
+            else:
+                shutil.copy2(src_file, dest_file)
             
         for path in to_delete:
             dest_file = os.path.join(root_dir, path)

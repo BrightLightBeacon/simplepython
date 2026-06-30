@@ -25,3 +25,6 @@ __pycache__/
 
 # Logs
 logs/
+
+# Backups
+backups/
