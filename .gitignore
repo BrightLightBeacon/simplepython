@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Excel / Word temporary files
+~$*.xlsx
+~$*.docx
+~$*.doc
+
+# IDEs
+.idea/
+.vscode/
