@@ -75,8 +75,8 @@ def is_exclude_param(param_text):
 
 def extract_driver_from_parameter(param_text):
     """
-    Extract driver name from parameter if it contains ${driver;Name} pattern.
-    Example: ${driver;Бондаренко Сергій Валерійович} -> returns 'Бондаренко Сергій Валерійович'
+    Extract driver name from parameter if it contains водій {Name} pattern (or legacy ${driver;Name}).
+    Example: водій {Бондаренко Сергій Валерійович} -> returns 'Бондаренко Сергій Валерійович'
     Returns None if pattern not found.
     """
     if not param_text or pd.isna(param_text):
@@ -84,12 +84,18 @@ def extract_driver_from_parameter(param_text):
     
     param_str = str(param_text).strip()
     
-    # Pattern to match ${driver;Name}
-    pattern = r'\$\{driver;([^}]+)\}'
-    match = re.search(pattern, param_str)
-    
-    if match:
-        driver_name = match.group(1).strip()
+    # Pattern to match водій {Name}
+    pattern_new = r'водій\s*\{([^}]+)\}'
+    match_new = re.search(pattern_new, param_str, re.IGNORECASE)
+    if match_new:
+        driver_name = match_new.group(1).strip()
+        return driver_name if driver_name else None
+        
+    # Legacy pattern to match ${driver;Name}
+    pattern_old = r'\$\{driver;([^}]+)\}'
+    match_old = re.search(pattern_old, param_str)
+    if match_old:
+        driver_name = match_old.group(1).strip()
         return driver_name if driver_name else None
     
     return None
