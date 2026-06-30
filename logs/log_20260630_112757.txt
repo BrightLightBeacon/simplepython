@@ -1,4 +1,0 @@
-Error: Cannot use both --service-only and --assignment-only at the same time
-
-Скрипт завершився з кодом помилки: 1. Деталі збережено в лог-файлі (папка logs).
-Натисніть Enter для виходу...

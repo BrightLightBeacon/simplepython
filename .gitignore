@@ -16,3 +16,12 @@ __pycache__/
 # Local tokens
 .github_token
 
+# Main Excel workbook in the root folder
+/*.xlsx
+
+# Output folders
+реєстри/
+накази/
+
+# Logs
+logs/
