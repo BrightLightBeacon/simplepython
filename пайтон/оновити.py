@@ -11,11 +11,37 @@ from datetime import datetime
 REPO_URL = "https://github.com/BrightLightBeacon/simplepython"
 ZIP_URL = f"{REPO_URL}/archive/refs/heads/main.zip"
 
+def should_update_file(rel_path):
+    """
+    Determines if a file should be updated/added/replaced.
+    Only allows:
+    1. .bat files in the root or elsewhere.
+    2. .py files inside the 'пайтон' folder.
+    3. Any files inside the 'шаблони' folder.
+    All other files (like 'дебеторка.xlsx' or 'реєстри/*') are ignored.
+    """
+    # Normalize separators
+    norm_path = rel_path.replace('\\', '/')
+    parts = norm_path.split('/')
+    
+    # 1. Any .bat file
+    if norm_path.endswith('.bat'):
+        return True
+        
+    # 2. Python files within 'пайтон' folder
+    if len(parts) >= 2 and parts[0] == 'пайтон' and norm_path.endswith('.py'):
+        return True
+        
+    # 3. Files within 'шаблони' folder
+    if len(parts) >= 2 and parts[0] == 'шаблони':
+        return True
+        
+    return False
+
 def run_git_update(root_dir):
-    """Try to update the repository using git pull."""
+    """Try to update the repository using git pull on specific allowed paths."""
     print("Checking for Git update...")
     try:
-        # Check if git is installed and if this is a git repository
         with open(os.devnull, 'w') as devnull:
             git_check = subprocess.run(
                 ["git", "rev-parse", "--is-inside-work-tree"],
@@ -27,22 +53,28 @@ def run_git_update(root_dir):
             return False
             
         print("Git repository detected. Fetching latest changes...")
-        # Stash changes to avoid conflicts, then pull, then pop
-        print("Stashing local changes if any...")
-        subprocess.run(["git", "stash"], cwd=root_dir)
-        
-        print("Pulling latest code...")
-        pull_result = subprocess.run(["git", "pull", "origin", "main"], cwd=root_dir)
-        
-        print("Restoring local changes...")
-        subprocess.run(["git", "stash", "pop"], cwd=root_dir)
-        
-        if pull_result.returncode == 0:
-            print("\nSuccessfully updated using Git!")
-            return True
-        else:
-            print("Git pull failed. Will try ZIP download fallback.")
+        # Fetch remote changes
+        fetch_result = subprocess.run(["git", "fetch", "origin", "main"], cwd=root_dir)
+        if fetch_result.returncode != 0:
+            print("Git fetch failed. Will try ZIP download fallback.")
             return False
+            
+        # Checkout ONLY the allowed folders/files from origin/main
+        print("Updating .bat files...")
+        subprocess.run(["git", "checkout", "origin/main", "--", "*.bat"], cwd=root_dir)
+        
+        print("Updating Python scripts...")
+        subprocess.run(["git", "checkout", "origin/main", "--", "пайтон/"], cwd=root_dir)
+        
+        print("Updating templates...")
+        subprocess.run(["git", "checkout", "origin/main", "--", "шаблони/"], cwd=root_dir)
+        
+        # Reset staging area to keep git status clean
+        print("Resetting git staging area...")
+        subprocess.run(["git", "reset", "HEAD"], cwd=root_dir)
+        
+        print("\nSuccessfully updated using Git!")
+        return True
     except FileNotFoundError:
         print("Git is not installed or not found in PATH.")
         return False
@@ -99,6 +131,10 @@ def run_zip_update(root_dir):
                 target_parent = os.path.join(root_dir, rel_path)
                 
             for file in files:
+                file_rel_path = os.path.join(rel_path, file) if rel_path != "." else file
+                if not should_update_file(file_rel_path):
+                    continue
+                    
                 src_file = os.path.join(root, file)
                 dest_file = os.path.join(target_parent, file)
                 
@@ -127,14 +163,20 @@ def run_zip_update(root_dir):
                 target_parent = root_dir
             else:
                 target_parent = os.path.join(root_dir, rel_path)
-                os.makedirs(target_parent, exist_ok=True)
                 
             for file in files:
+                file_rel_path = os.path.join(rel_path, file) if rel_path != "." else file
+                if not should_update_file(file_rel_path):
+                    continue
+                    
                 src_file = os.path.join(root, file)
                 dest_file = os.path.join(target_parent, file)
+                
                 # Avoid copying the script itself to prevent file-in-use errors
                 if rel_path == "пайтон" and file == "оновити.py":
                     continue
+                    
+                os.makedirs(os.path.dirname(dest_file), exist_ok=True)
                 shutil.copy2(src_file, dest_file)
                 
         print("\nSuccessfully updated via ZIP download!")
