@@ -12,3 +12,7 @@ __pycache__/
 # IDEs
 .idea/
 .vscode/
+
+# Local tokens
+.github_token
+
