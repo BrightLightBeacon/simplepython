@@ -1,14 +1,48 @@
-import argparse
-import sys
 import os
+import sys
+import subprocess
+import importlib
+
+def install_and_import(module_name, package_name=None):
+    if package_name is None:
+        package_name = module_name
+    try:
+        importlib.import_module(module_name)
+    except ImportError:
+        print(f"Missing required dependency '{package_name}'. Attempting to install automatically...", flush=True)
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+            importlib.import_module(module_name)
+            print(f"Successfully installed {package_name}!", flush=True)
+        except Exception as e:
+            print(f"Error installing {package_name} automatically: {e}", file=sys.stderr, flush=True)
+            print(f"Please install it manually using: pip install {package_name}", file=sys.stderr, flush=True)
+            sys.exit(1)
+
+install_and_import("pandas")
+install_and_import("openpyxl")
+
+import argparse
 import datetime
 import calendar
 import re
 import json
+import glob
+from pathlib import Path
 import pandas as pd
 import openpyxl
 from copy import copy
 from openpyxl.worksheet.formula import ArrayFormula
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(SCRIPT_DIR)
+
+def find_template_file(filename, fallback_dir="шаблони"):
+    for path in Path(ROOT_DIR).rglob(filename):
+        parts = [p.lower() for p in path.parts]
+        if path.is_file() and not any(p.startswith('.') or p in ('venv', 'env', 'build', 'dist', 'node_modules', '__pycache__') for p in parts):
+            return str(path)
+    return os.path.join(ROOT_DIR, fallback_dir, filename)
 
 def get_month_name_ukr(month_idx):
     names = {
@@ -210,52 +244,117 @@ def parse_date_range(range_str):
         pass
     return None
 
+def matches_company(vac_company, target_company):
+    if not vac_company or vac_company.strip() in ("", "*"):
+        return True
+    vc = vac_company.strip().upper()
+    tc = target_company.strip().upper()
+    return vc in tc or tc in vc
+
 def main():
     parser = argparse.ArgumentParser(description="Generate timesheets based on Excel data.")
     parser.add_argument("-m", "--month", type=str, help="Target month in mmyy format (e.g. 0526). Defaults to the previous month if omitted.")
     parser.add_argument("-c", "--company", type=str, help="Specific company to process ('zia' for ЗІАВТОТРАНС, 'zet' for ЗЕТТРА). Defaults to both if omitted.")
+    parser.add_argument("-f", "--file", type=str, help="Specific source Excel file path.")
     
     args = parser.parse_args()
     
-    # Load and parse vacations from vacations.json
-    vacations_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "накази відпустки", "vacations.json")
+    # Load and parse vacations from відпустки.txt inside ROOT_DIR
+    vacations_path = os.path.join(ROOT_DIR, "відпустки.txt")
+    if not os.path.exists(vacations_path):
+        fallback_vac = os.path.join(ROOT_DIR, "відпустки")
+        if os.path.exists(fallback_vac):
+            vacations_path = fallback_vac
+
     parsed_vacations = []
     if os.path.exists(vacations_path):
         try:
             with open(vacations_path, "r", encoding="utf-8") as f:
-                vacations_data = json.load(f)
-            for entry in vacations_data:
-                v_name = entry.get("name")
-                v_range = entry.get("vacation_date_range")
-                v_type = entry.get("vacation_type")
-                if v_name and v_range and v_type:
-                    norm_name = normalize_name(v_name)
-                    date_bounds = parse_date_range(v_range)
-                    if date_bounds:
-                        start_date, end_date = date_bounds
-                        parsed_vacations.append({
-                            "name": norm_name,
-                            "start": start_date,
-                            "end": end_date,
-                            "type": v_type
-                        })
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) >= 4:
+                        comp_str = parts[0]
+                        v_name = parts[1]
+                        v_range = parts[2]
+                        v_type = ",".join(parts[3:]).strip()
+                    elif len(parts) == 3:
+                        comp_str = ""
+                        v_name = parts[0]
+                        v_range = parts[1]
+                        v_type = parts[2]
+                    else:
+                        continue
+                        
+                    if v_name and v_range and v_type:
+                        norm_name = normalize_name(v_name)
+                        date_bounds = parse_date_range(v_range)
+                        if date_bounds:
+                            start_date, end_date = date_bounds
+                            parsed_vacations.append({
+                                "company": comp_str,
+                                "name": norm_name,
+                                "start": start_date,
+                                "end": end_date,
+                                "type": v_type
+                            })
             print(f"Loaded {len(parsed_vacations)} valid vacation records from {vacations_path}")
         except Exception as e:
-            print(f"Error loading or parsing vacations JSON: {e}")
+            print(f"Error loading or parsing vacations file: {e}")
     else:
         print(f"Warning: Vacations file not found at {vacations_path}")
 
-    base_dir = r"\\Mac\Home\googledrive-nadinemar471"
-    template_path = os.path.join(base_dir, "docs", "табель", "template_timesheet.xlsx")
-    output_dir = os.path.join(base_dir, "docs", "табель")
+    # Dynamic template resolution
+    template_path = find_template_file("template_timesheet.xlsx")
+    if not os.path.exists(template_path):
+        for candidate_name in ["шаблон-табелю.xlsx", "шаблон_табелю.xlsx", "шаблон-табель.xlsx"]:
+            candidate = find_template_file(candidate_name)
+            if os.path.exists(candidate):
+                template_path = candidate
+                break
+
+    output_dir = os.path.join(ROOT_DIR, "табелі")
+    if os.path.exists(os.path.join(ROOT_DIR, "табель")):
+        output_dir = os.path.join(ROOT_DIR, "табель")
+    os.makedirs(output_dir, exist_ok=True)
     
     mmyy = args.month
-    if mmyy:
-        file_name = f"Дебетовий список {mmyy}.xlsm"
-    else:
-        file_name = "Дебетовий список.xlsm"
+    excel_path = None
+    if args.file:
+        if os.path.exists(args.file):
+            excel_path = args.file
+        elif os.path.exists(os.path.join(ROOT_DIR, args.file)):
+            excel_path = os.path.join(ROOT_DIR, args.file)
 
-    excel_path = os.path.join(base_dir, file_name)
+    if not excel_path and mmyy:
+        candidates = glob.glob(os.path.join(ROOT_DIR, f"*{mmyy}*.xls*"))
+        candidates = [f for f in candidates if not os.path.basename(f).startswith('~$')]
+        if candidates:
+            excel_path = candidates[0]
+
+    if not excel_path:
+        for name_pattern in ["Дебетовий список*.xls*", "дебеторка*.xls*"]:
+            candidates = glob.glob(os.path.join(ROOT_DIR, name_pattern))
+            candidates = [f for f in candidates if not os.path.basename(f).startswith('~$')]
+            if candidates:
+                excel_path = candidates[0]
+                break
+
+    if not excel_path:
+        source_files = glob.glob(os.path.join(ROOT_DIR, "*.xls*"))
+        source_files = [f for f in source_files if not os.path.basename(f).startswith('~$')]
+        if len(source_files) == 1:
+            excel_path = source_files[0]
+        elif len(source_files) > 1:
+            excel_path = source_files[0]
+            print(f"Multiple Excel files found in {ROOT_DIR}. Using {excel_path}")
+
+    if not excel_path or not os.path.exists(excel_path):
+        print(f"Error: Target Excel workbook not found in {ROOT_DIR}.")
+        return
+
     print(f"Reading data from {excel_path} ...")
     
     try:
@@ -518,7 +617,7 @@ def main():
             
             # Find vacations for this driver
             driver_norm = normalize_name(driver)
-            driver_vacations = [v for v in parsed_vacations if v["name"] == driver_norm]
+            driver_vacations = [v for v in parsed_vacations if v["name"] == driver_norm and matches_company(v.get("company", ""), company_str)]
             
             for day in range(1, last_day + 1):
                 current_date = datetime.date(target_year, target_month, day)

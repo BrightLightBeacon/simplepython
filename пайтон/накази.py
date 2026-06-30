@@ -2037,6 +2037,13 @@ if __name__ == "__main__":
                     return 'ЗЕТТРА'
                 return str(val).strip()
             df[company_col] = df[company_col].apply(normalize_company)
+            
+            # --- Filter out other companies besides ЗІА and ЗЕТ ---
+            before_company_clean = len(df)
+            df = df[df[company_col].isin(['ЗІАВТОТРАНС', 'ЗЕТТРА'])]
+            excluded_count = before_company_clean - len(df)
+            if excluded_count > 0:
+                print(f"Filtered out other companies: kept {len(df)} rows, excluded {excluded_count} rows from other companies besides ЗІА and ЗЕТ")
         
         # Check if parameter column exists for service agreement detection
         has_comment_col = COLUMN_MAP['comment'] in df.columns
