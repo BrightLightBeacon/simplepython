@@ -326,16 +326,34 @@ def format_date_ukrainian(date_str):
         return date_str
 
 def format_driver_initials(full_name):
-    """Formats 'Lastname Firstname Patronymic' to 'Lastname F. P.'."""
+    """Formats driver name cleanly to 'Lastname I. O.' or handles full names to 'Lastname I. O.'."""
     if not isinstance(full_name, str) or not full_name.strip():
         return "NoName" # Handle empty or non-string names
-    parts = full_name.split()
+    
+    cleaned = full_name.strip(" \t\r\n.,")
+    # Match standard initials format: e.g., 'Боіштян О.О.', 'Гладир А. М.', 'СоколенкоВ.С.', 'Бабак Р.М'
+    # Group 1: Lastname (ends with a lowercase letter)
+    # Group 2: First initial (uppercase)
+    # Group 3: Patronymic initial (uppercase, optional)
+    regex = re.compile(r'^([A-ZА-ЯІЇЄҐЁa-zа-яіїєґё\'\-’`]+?[a-zа-яіїєґё])\s*([A-ZА-ЯІЇЄҐЁ])\.?\s*([A-ZА-ЯІЇЄҐЁ]?)\.?$')
+    m = regex.match(cleaned)
+    if m:
+        last = m.group(1)
+        i1 = m.group(2)
+        i2 = m.group(3)
+        if i2:
+            return f"{last} {i1}. {i2}."
+        return f"{last} {i1}."
+    
+    # Fallback to original/general parsing for full names (e.g. 'Боіштян Олександр Олександрович')
+    parts = cleaned.split()
     if len(parts) < 2:
-        return full_name # Return as is if less than two parts
-    initials = parts[0] # Last name
+        return cleaned  # Return as is if less than two parts
+    
+    initials = parts[0]  # Last name
     for part in parts[1:]:
-        if part: # Ensure part is not empty
-             initials += f" {part[0]}."
+        if part:  # Ensure part is not empty
+            initials += f" {part[0]}."
     return initials
 
 def is_service_agreement(param_text):
@@ -354,7 +372,7 @@ def is_service_agreement(param_text):
     parts = param_str.split()
     if len(parts) >= 4 and parts[0] == 'цпх':
         company = parts[1]
-        if company in ('зіа', 'зет', 'zia', 'zet'):
+        if company in ('зіа', 'зет', 'zia', 'zet', 'зіавтотранс', 'зеттра'):
             return True
             
     return False
@@ -390,6 +408,10 @@ def extract_service_agreement_details(param_text):
     match = re.search(pattern, param_str)
     if match:
         company = match.group(1).strip().upper()
+        if company in ('ЗІА', 'ЗІАВТОТРАНС'):
+            company = 'ZIA'
+        elif company in ('ЗЕТ', 'ЗЕТТРА'):
+            company = 'ZET'
         return {'company': company, 'money': match.group(2).strip(), 'timestamp': match.group(3).strip()}
         
     # 2. Try new format: цпх company money timestamp
@@ -397,9 +419,9 @@ def extract_service_agreement_details(param_text):
     if len(parts) >= 4 and parts[0].lower() == 'цпх':
         company = parts[1].upper()
         # Normalize Ukrainian company codes to English equivalents (ZIA/ZET)
-        if company == 'ЗІА':
+        if company in ('ЗІА', 'ЗІАВТОТРАНС'):
             company = 'ZIA'
-        elif company == 'ЗЕТ':
+        elif company in ('ЗЕТ', 'ЗЕТТРА'):
             company = 'ZET'
         
         money = parts[2]
@@ -2001,6 +2023,20 @@ if __name__ == "__main__":
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             raise ValueError(f"Missing required columns in sheet '{SHEET_NAME}': {', '.join(missing_cols)}")
+        
+        # --- Normalize Company Names ---
+        company_col = COLUMN_MAP['company_code']
+        if company_col in df.columns:
+            def normalize_company(val):
+                if pd.isna(val):
+                    return val
+                val_str = str(val).strip().upper()
+                if val_str in ('ЗІА', 'ЗІАВТОТРАНС'):
+                    return 'ЗІАВТОТРАНС'
+                if val_str in ('ЗЕТ', 'ЗЕТТРА'):
+                    return 'ЗЕТТРА'
+                return str(val).strip()
+            df[company_col] = df[company_col].apply(normalize_company)
         
         # Check if parameter column exists for service agreement detection
         has_comment_col = COLUMN_MAP['comment'] in df.columns
