@@ -1,0 +1,53 @@
+
+Оберіть компанію для фільтрації:
+1. ЗЕТТРА
+2. ЗІАВТОТРАНС
+Enter. Всі компанії (без фільтрації)
+
+Оберіть режим обробки:
+1. Накази на відрядження та ЦПХ (за замовчуванням)
+2. Тільки накази на відрядження
+3. Тільки договори ЦПХ
+Starting script...
+Target month: 06/2026
+Reading Excel file: C:\simplepython\дебеторка.xlsx
+Sheet: Дебетовий, Table: debitlist
+Blank page removal: ENABLED
+Consolidation mode: ENABLED - Combining assignments by start date
+Total rows in Excel: 68
+Rows in target month (06/2026): 53
+Filtered to company 'ЗІАВТОТРАНС': 0 rows (excluded 53 from other companies)
+Filtered to regular assignments only: 0 rows (excluded 0 service agreements)
+
+=== VERIFYING DATE ORDER ===
+Date order verification passed - all dates are sequential for each driver
+
+--- An Unexpected Error Occurred ---
+Traceback (most recent call last):
+  File "C:\Users\romanaheienko\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\indexes\base.py", line 3641, in get_loc
+    return self._engine.get_loc(casted_key)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "pandas/_libs/index.pyx", line 168, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/index.pyx", line 197, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7668, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7676, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'накази та цпх'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\simplepython\пайтон\накази.py", line 2121, in <module>
+    df_regular_preview = df_regular_preview[~df_regular_preview[COLUMN_MAP['comment']].apply(is_service_agreement)]
+                                             ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\romanaheienko\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\frame.py", line 4378, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "C:\Users\romanaheienko\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\core\indexes\base.py", line 3648, in get_loc
+    raise KeyError(key) from err
+KeyError: 'накази та цпх'
+
+
+-------------------------------------
+Script execution finished.
+
+Script terminated early due to error: 'накази та цпх'
+-------------------------------------

@@ -148,6 +148,82 @@ WD_DO_NOT_SAVE_CHANGES = 0
 # --- PDF Processing Configuration ---
 REMOVE_BLANK_PAGES = True  # Set to False to disable blank page removal from PDFs
 
+# --- Logging and Error Handling Support ---
+class Tee(object):
+    def __init__(self, *files):
+        self.files = files
+    def write(self, obj):
+        for f in self.files:
+            try:
+                f.write(obj)
+                f.flush()
+            except Exception:
+                pass
+    def flush(self):
+        for f in self.files:
+            try:
+                f.flush()
+            except Exception:
+                pass
+    def __getattr__(self, attr):
+        return getattr(self.files[0], attr)
+
+log_file = None
+
+def setup_logging():
+    global log_file
+    try:
+        logs_dir = ROOT_DIR / "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        log_filename = logs_dir / f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        log_file = open(log_filename, "w", encoding="utf-8", errors="replace")
+        sys.stdout = Tee(sys.__stdout__ or sys.stdout, log_file)
+        sys.stderr = Tee(sys.__stderr__ or sys.stderr, log_file)
+    except Exception as e:
+        print(f"Warning: Could not set up file logging: {e}")
+
+import atexit
+def close_logging():
+    global log_file
+    if log_file:
+        try:
+            sys.stdout = sys.__stdout__ or sys.stdout
+            sys.stderr = sys.__stderr__ or sys.stderr
+            log_file.close()
+        except:
+            pass
+
+atexit.register(close_logging)
+
+def custom_excepthook(exctype, value, tb):
+    import traceback
+    if issubclass(exctype, KeyboardInterrupt):
+        print("\nВиконання перервано користувачем.")
+        close_logging()
+        os._exit(0)
+    traceback.print_exception(exctype, value, tb, file=sys.stderr)
+    print("\nВиникла критична помилка. Деталі збережено в лог-файлі (папка logs).")
+    try:
+        input("Натисніть Enter для виходу...")
+    except (KeyboardInterrupt, EOFError):
+        pass
+    close_logging()
+    os._exit(1)
+
+original_exit = sys.exit
+def custom_exit(code=0):
+    if code != 0:
+        print(f"\nСкрипт завершився з кодом помилки: {code}. Деталі збережено в лог-файлі (папка logs).")
+        try:
+            input("Натисніть Enter для виходу...")
+        except (KeyboardInterrupt, EOFError):
+            pass
+    close_logging()
+    original_exit(code)
+
+sys.excepthook = custom_excepthook
+sys.exit = custom_exit
+
 def parse_month_arg(month_str):
     """
     Parse month argument in format MMYY (e.g., '0525' for May 2025)
@@ -1513,6 +1589,7 @@ class ExcelBatchWriter:
 
 # --- Main Script ---
 if __name__ == "__main__":
+    setup_logging()
     # --- Argument Parsing ---
     parser = argparse.ArgumentParser(description="Generate assignments for specific company.")
     parser.add_argument("--zet", action="store_true", help="Process only ЗЕТТРА")
@@ -1523,10 +1600,14 @@ if __name__ == "__main__":
     parser.add_argument("--no-blank-removal", action="store_true", help="Disable automatic blank page removal from PDFs")
     parser.add_argument("--verify-only", nargs='?', const=True, default=False, help="Verify consolidated PDF. Without value: verify date order in Excel. With value (e.g., zia0326): verify page order in existing consolidated PDF")
     parser.add_argument("--no-excel-update", action="store_true", help="Do not update Excel 'накази' column with sequence numbers")
-    parser.add_argument("--consolidate", nargs='?', const=True, default=False, help="Consolidate assignments by start date. Without value: combine during processing. With value (e.g., zet0326): rebuild combined PDF from existing files in the company folder")
+    parser.add_argument("--no-consolidate", action="store_true", help="Disable consolidation of assignments")
+    parser.add_argument("--consolidate", nargs='?', const=True, default=True, help="Consolidate assignments by start date. Without value: combine during processing. With value (e.g., zet0326): rebuild combined PDF from existing files in the company folder")
     parser.add_argument("--short-names", action="store_true", help="Use short driver initials (e.g., 'Іваненко І. П.') instead of full names in signatures")
     parser.add_argument("--both-sides", action="store_true", help="Add blank pages between assignments in combined PDF so each starts on a sheet front (for duplex printing)")
     args = parser.parse_args()
+
+    if args.no_consolidate:
+        args.consolidate = False
 
     # Validate mutually exclusive arguments
     if args.service_only and args.assignment_only:
@@ -1819,9 +1900,40 @@ if __name__ == "__main__":
             user_input = input(f"Введіть місяць для обробки у форматі ММРР [за замовчуванням: {default_month_str}]: ").strip()
             if user_input:
                 args.month = user_input
+            
+            # Ask for company filter
+            if not args.zet and not args.zia:
+                print("\nОберіть компанію для фільтрації:")
+                print("1. ЗЕТТРА")
+                print("2. ЗІАВТОТРАНС")
+                print("Enter. Всі компанії (без фільтрації)")
+                comp_input = input("Ваш вибір: ").strip()
+                if comp_input == '1' or comp_input.lower() == 'zet':
+                    args.zet = True
+                elif comp_input == '2' or comp_input.lower() == 'zia':
+                    args.zia = True
+
+            # Ask for processing mode
+            if not args.service_only and not args.assignment_only:
+                print("\nОберіть режим обробки:")
+                print("1. Накази на відрядження та ЦПХ (за замовчуванням)")
+                print("2. Тільки накази на відрядження")
+                print("3. Тільки договори ЦПХ")
+                mode_input = input("Ваш вибір: ").strip()
+                if mode_input == '2':
+                    args.assignment_only = True
+                elif mode_input == '3':
+                    args.service_only = True
         except (KeyboardInterrupt, EOFError):
             print("\nСкасовано.")
             sys.exit(0)
+
+    # Re-evaluate company filter based on CLI or interactive inputs
+    company_filter = None
+    if args.zet:
+        company_filter = "ЗЕТТРА"
+    elif args.zia:
+        company_filter = "ЗІАВТОТРАНС"
 
     if args.month:
         month_data = parse_month_arg(args.month)
