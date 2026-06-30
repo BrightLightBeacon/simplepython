@@ -358,31 +358,52 @@ def main():
     print(f"Reading data from {excel_path} ...")
     
     try:
-        df = pd.read_excel(excel_path, sheet_name="Дебетовий список")
-    except ValueError:
-        print(f"Sheet 'Дебетовий список' not found in {excel_path}. Attempting to read default sheet...")
-        try:
-            df = pd.read_excel(excel_path)
-        except Exception as e:
-            print(f"Error reading {excel_path}: {e}")
-            return
+        # Load the first sheet available in the workbook
+        df = pd.read_excel(excel_path)
     except Exception as e:
         print(f"Error reading {excel_path}: {e}")
         return
     
-    # Find column names dynamically to handle variations
-    col_company = next((c for c in df.columns if "товариство" in str(c).lower()), None)
-    col_driver = next((c for c in df.columns if "водій" in str(c).lower()), None)
-    col_start = next((c for c in df.columns if "початок рейсу" in str(c).lower()), None)
-    col_end = next((c for c in df.columns if "завершення рейсу" in str(c).lower()), None)
-    col_method = next((c for c in df.columns if str(c).strip().lower() == "спосіб"), None)
-    col_param = next((c for c in df.columns if "параметр" in str(c).lower()), None)
-    col_status = next((c for c in df.columns if "статус водія" in str(c).lower()), None)
+    # Find column names dynamically to handle variations safely
+    def find_column(options, exact=False):
+        # 1. Try exact case-insensitive match first to avoid substring collision (e.g. matching 'водій' instead of a longer description)
+        for opt in options:
+            for col in df.columns:
+                if str(col).strip().lower() == opt.lower():
+                    return col
+        # 2. Try substring match if exact not requested
+        if not exact:
+            for opt in options:
+                for col in df.columns:
+                    if opt.lower() in str(col).lower():
+                        return col
+        return None
+
+    col_company = find_column(["товариство"])
+    col_driver = find_column(["водій"])
+    col_start = find_column(["початок рейсу", "навантаження дата"])
+    col_end = find_column(["завершення рейсу", "розвантаження дата"])
+    col_method = find_column(["спосіб"], exact=True)
+    col_param = find_column(["параметр", "накази та цпх", "нотатка"])
+    col_status = find_column(["статус водія"])
     
     if not all([col_company, col_driver, col_start, col_end]):
         print("Missing required columns in the Excel file.")
         print("Found columns:", df.columns.tolist())
         return
+
+    # Normalize company names to group variations (e.g., 'ЗІА' -> 'ЗІАВТОТРАНС')
+    def normalize_company(val):
+        if pd.isna(val):
+            return val
+        val_str = str(val).strip().upper()
+        if val_str in ('ЗІА', 'ЗІАВТОТРАНС'):
+            return 'ЗІАВТОТРАНС'
+        if val_str in ('ЗЕТ', 'ЗЕТТРА'):
+            return 'ЗЕТТРА'
+        return str(val).strip()
+        
+    df[col_company] = df[col_company].apply(normalize_company)
 
     # --- Filter: explicit exclude via parameter and service agreements ---
     if col_param:
@@ -696,4 +717,10 @@ def main():
     print("Done!")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        try:
+            input("\nНатисніть Enter для виходу / Press Enter to exit...")
+        except (KeyboardInterrupt, EOFError):
+            pass
