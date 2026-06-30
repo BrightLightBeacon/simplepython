@@ -239,9 +239,19 @@ def run_zip_update(root_dir):
                         to_update.append((norm_rel_path, src_file, dest_file, "ADDED"))
                     else:
                         try:
-                            with open(src_file, 'rb') as f1, open(dest_file, 'rb') as f2:
-                                if f1.read() != f2.read():
+                            if norm_rel_path.endswith('.bat'):
+                                with open(src_file, 'r', encoding='utf-8', errors='ignore') as f1:
+                                    src_content = f1.read().replace('\r\n', '\n')
+                                with open(dest_file, 'r', encoding='utf-8', errors='ignore') as f2:
+                                    local_raw = f2.read()
+                                    local_content = local_raw.replace('\r\n', '\n')
+                                
+                                if src_content != local_content or '\r\n' not in local_raw:
                                     to_update.append((norm_rel_path, src_file, dest_file, "UPDATED"))
+                            else:
+                                with open(src_file, 'rb') as f1, open(dest_file, 'rb') as f2:
+                                    if f1.read() != f2.read():
+                                        to_update.append((norm_rel_path, src_file, dest_file, "UPDATED"))
                         except Exception:
                             to_update.append((norm_rel_path, src_file, dest_file, "UPDATED"))
                 else:
