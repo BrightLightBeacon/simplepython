@@ -671,7 +671,7 @@ def main():
                 en = row_data[col_end]
                 if pd.notna(st) and pd.notna(en):
                     try:
-                        trips.append((pd.to_datetime(st).date(), pd.to_datetime(en).date()))
+                        trips.append((pd.to_datetime(st, dayfirst=True).date(), pd.to_datetime(en, dayfirst=True).date()))
                     except:
                         pass
             
