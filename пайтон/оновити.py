@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import urllib.request
+import urllib.error
 import zipfile
 import tempfile
 import subprocess
@@ -10,6 +11,7 @@ from datetime import datetime
 # GitHub repository details
 REPO_URL = "https://github.com/BrightLightBeacon/simplepython"
 ZIP_URL = f"{REPO_URL}/archive/refs/heads/main.zip"
+API_ZIP_URL = "https://api.github.com/repos/BrightLightBeacon/simplepython/zipball/main"
 
 def should_update_file(rel_path):
     """
@@ -53,7 +55,7 @@ def run_git_update(root_dir):
             return False
             
         print("Git repository detected. Fetching latest changes...")
-        # Fetch remote changes
+        # Fetch remote changes - if password/key prompt is needed, Git will do it here
         fetch_result = subprocess.run(["git", "fetch", "origin", "main"], cwd=root_dir)
         if fetch_result.returncode != 0:
             print("Git fetch failed. Will try ZIP download fallback.")
@@ -88,16 +90,60 @@ def run_zip_update(root_dir):
     temp_zip = None
     temp_dir = None
     
-    try:
-        # 1. Download the ZIP file
-        print(f"Downloading update from {ZIP_URL}...")
+    token_path = os.path.join(root_dir, ".github_token")
+    token = None
+    if os.path.exists(token_path):
+        try:
+            with open(token_path, 'r', encoding='utf-8') as f:
+                token = f.read().strip()
+        except Exception:
+            pass
+            
+    def download_zip(url, use_token=None):
         headers = {'User-Agent': 'Mozilla/5.0'}
-        req = urllib.request.Request(ZIP_URL, headers=headers)
+        if use_token:
+            headers['Authorization'] = f'Bearer {use_token}'
+            headers['Accept'] = 'application/vnd.github+json'
         
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req) as response:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
                 shutil.copyfileobj(response, tmp)
-                temp_zip = tmp.name
+                return tmp.name
+    
+    try:
+        # 1. Download the ZIP file
+        try:
+            if token:
+                print("Using saved GitHub token...")
+                temp_zip = download_zip(API_ZIP_URL, token)
+            else:
+                print(f"Downloading update from {ZIP_URL}...")
+                temp_zip = download_zip(ZIP_URL)
+        except urllib.error.HTTPError as e:
+            # 404, 403, or 401 indicates that authentication is required
+            if e.code in (401, 403, 404):
+                print("\n[Auth Required] This repository is private or requires authentication.")
+                if token:
+                    print("Saved token appears to be invalid or expired.")
+                
+                # Prompt user for GitHub Personal Access Token (PAT)
+                token = input("Please enter your GitHub Personal Access Token (PAT): ").strip()
+                if not token:
+                    raise Exception("Authentication token is required to download updates.")
+                
+                print("Testing token and downloading update...")
+                temp_zip = download_zip(API_ZIP_URL, token)
+                
+                # Save the verified working token
+                try:
+                    with open(token_path, 'w', encoding='utf-8') as f:
+                        f.write(token)
+                    print(f"Saved token to {token_path} (added to .gitignore).")
+                except Exception as save_err:
+                    print(f"Warning: Could not save token: {save_err}")
+            else:
+                raise e
         
         # 2. Create a temporary directory to extract into
         temp_dir = tempfile.mkdtemp()
@@ -105,15 +151,13 @@ def run_zip_update(root_dir):
         with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
             zip_ref.extractall(temp_dir)
             
-        # The zip extracts into simplepython-main/ folder
-        extracted_folder_name = "simplepython-main"
-        source_dir = os.path.join(temp_dir, extracted_folder_name)
-        
-        if not os.path.exists(source_dir):
-            contents = os.listdir(temp_dir)
-            if len(contents) == 1 and os.path.isdir(os.path.join(temp_dir, contents[0])):
-                source_dir = os.path.join(temp_dir, contents[0])
-            else:
+        # Locate the extracted folder
+        contents = os.listdir(temp_dir)
+        if len(contents) == 1 and os.path.isdir(os.path.join(temp_dir, contents[0])):
+            source_dir = os.path.join(temp_dir, contents[0])
+        else:
+            source_dir = os.path.join(temp_dir, "simplepython-main")
+            if not os.path.exists(source_dir):
                 raise Exception("Could not find extracted repository folder.")
         
         # 3. Create a backup of files we are about to overwrite
@@ -184,6 +228,12 @@ def run_zip_update(root_dir):
         
     except Exception as e:
         print(f"\n[ERROR] ZIP update failed: {e}")
+        # Clear saved token if it failed
+        if token_path and os.path.exists(token_path):
+            try:
+                os.remove(token_path)
+            except Exception:
+                pass
         return False
         
     finally:
